@@ -1,0 +1,6 @@
+<TextureAtlas imagePath="sprites.png">
+	<SubTexture name="cry_000.png" x="20" y="0" width="18" height="18"/>
+	<SubTexture name="laserGreen05.png" x="0" y="20" width="9" height="9"/>
+	<SubTexture name="laserRed03.png" x="11" y="20" width="9" height="9"/>
+	<SubTexture name="laugh_000.png" x="0" y="0" width="18" height="18"/>
+</TextureAtlas>
