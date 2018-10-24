@@ -172,7 +172,6 @@ public:
 		}
 	}
 
-	// TODO - finish this thing
 	void Draw(ShaderProgram &program) {
 		if (health > 0) {
 			sprite.Draw(program);
