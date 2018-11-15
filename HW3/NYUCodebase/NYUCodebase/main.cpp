@@ -4,6 +4,7 @@
 #include <SDL.h>
 #include <SDL_opengl.h>
 #include <SDL_image.h>
+#include <SDL_mixer.h>
 
 #ifdef _WINDOWS
 #define RESOURCE_FOLDER ""
@@ -22,6 +23,11 @@
 
 SDL_Window* displayWindow;
 enum GameState {STATE_TITLE, STATE_GAME, STATE_GAMEOVER};
+
+// sound
+Mix_Music *bgm;
+Mix_Chunk *laser;
+Mix_Chunk *zap;
 
 GLuint LoadTexture(const char *filePath)
 {
@@ -265,9 +271,19 @@ int main(int argc, char *argv[])
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
+	Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 4096);
+	bgm = Mix_LoadMUS("TRG_Banks_Christmas_Town.mp3");
+	laser = Mix_LoadWAV("laser1.wav");
+	zap = Mix_LoadWAV("zap1.wav");
+	Mix_VolumeMusic(30);
+	Mix_PlayMusic(bgm, -1);
+
+	float playerPenetration;
+
     SDL_Event event;
     bool done = false;
     while (!done) {
+		playerPenetration = 0;
 		const Uint8 *keys = SDL_GetKeyboardState(NULL);
 
         while (SDL_PollEvent(&event)) {
@@ -358,10 +374,11 @@ int main(int argc, char *argv[])
 					if (projectiles.size() > MAX_BULLETS) {
 						projectiles.erase(projectiles.begin());
 					}
+					Mix_PlayChannel(-1, laser, 0);
 					projectiles.push_back(Entity(player.position, projectileSize,
 						glm::vec3(0.0f, 3.0f, 0.0f), true, false));
 					projectiles[projectiles.size() - 1].sprite = playerProjectile;
-					player.shootDelay = 20;
+					player.shootDelay = 50;
 				}
 			}
 
@@ -383,6 +400,18 @@ int main(int argc, char *argv[])
 			//=====================PLAYER=====================//
 			//================================================//
 			player.Update(elapsed);
+
+			// check collision with wall
+			if (player.position.x + emoteSize.x / 2 >= 3.5f) {
+				playerPenetration = fabs(fabs(player.position.x - 3.5f) - emoteSize.x - 0.05f);
+				player.position.x -= playerPenetration - 0.005f;
+			}
+
+			if (player.position.x - emoteSize.x / 2 <= -3.5f) {
+				playerPenetration = fabs(fabs(player.position.x + 3.5f) - emoteSize.x - 0.05f);
+				player.position.x += playerPenetration + 0.005f;
+			}
+
 			modelMatrix = glm::mat4(1.0f);
 			modelMatrix = glm::translate(modelMatrix, player.position);
 			program.SetModelMatrix(modelMatrix);
@@ -479,6 +508,7 @@ int main(int argc, char *argv[])
 				for (int j = 0; j < enemies.size(); j++) {
 					if (enemies[j].health > 0) {
 						if (enemies[j].collided(projectiles[projectileIndex])) {
+							Mix_PlayChannel(-1, zap, 0);
 							enemies[j].health--;
 							projectiles[projectileIndex].health = 0;
 							score++;
@@ -526,7 +556,13 @@ int main(int argc, char *argv[])
 
         SDL_GL_SwapWindow(displayWindow);
     }
-    
+
+	Mix_HaltMusic();
+	// clean up sounds
+	Mix_FreeChunk(laser);
+	Mix_FreeChunk(zap);
+	Mix_FreeMusic(bgm);
+
     SDL_Quit();
     return 0;
 }

@@ -286,14 +286,35 @@ private:
 	}
 
 	void tileCollision() {
-		int tileX, tileY, tileLeft, tileRight, tileUp, tileDown;
+		int tileX, tileY,
+			tileLeftMid, tileLeftUp, tileLeftDown, 
+			tileRightMid, tileRightUp, tileRightDown, 
+			tileUpMid, tileUpRight, tileUpLeft, 
+			tileDownMid, tileDownRight, tileDownLeft;
 		float penetration = 0;
 
+		worldToTileCoordinates(position.x + size.x / 2.0f, position.y, tileRightMid, tileY);
+		worldToTileCoordinates(position.x + size.x / 2.0f, position.y + 31.0f * size.y / 32.0f, tileRightUp, tileY);
+		worldToTileCoordinates(position.x + size.x / 2.0f, position.y - MAP_TILE_SIZE, tileRightDown, tileY);
+
+		worldToTileCoordinates(position.x - size.x / 2.0f, position.y, tileLeftMid, tileY);
+		worldToTileCoordinates(position.x - size.x / 2.0f, position.y + 31.0f * size.y / 32.0f, tileLeftUp, tileY);
+		worldToTileCoordinates(position.x - size.x / 2.0f, position.y - MAP_TILE_SIZE, tileLeftDown, tileY);
+
+		worldToTileCoordinates(position.x, position.y - size.y / 2.0f, tileX, tileDownMid);
+
+		worldToTileCoordinates(position.x, position.y + size.y / 4.0f, tileX, tileUpMid);
+
+		worldToTileCoordinates(position.x, position.y, tileX, tileY);
+
 		// right side
-		worldToTileCoordinates(position.x + size.x / 2.0f, position.y, tileRight, tileY);
-		if (tileRight >= LEVEL_WIDTH - 1 || isSolid(levelData[tileY][tileRight])) {
+		if (tileRightMid >= LEVEL_WIDTH - 1 
+			|| isSolid(levelData[tileY][tileRightMid])
+			|| isSolid(levelData[tileRightUp][tileRightMid])
+			|| isSolid(levelData[tileRightDown][tileRightMid])) {
+
 			collidedRight = true;
-			penetration = (MAP_TILE_SIZE * tileRight) - (position.x + size.x / 2.0f);
+			penetration = (MAP_TILE_SIZE * tileRightMid) - (position.x + size.x / 2.0f);
 			position.x += (penetration + 0.001f);
 
 			// stops the player movement but allows player to continue moving in the other direction
@@ -305,10 +326,13 @@ private:
 			collidedRight = false;
 		}
 		// left side
-		worldToTileCoordinates(position.x - size.x / 2.0f, position.y, tileLeft, tileY);
-		if (tileLeft <= 0 || isSolid(levelData[tileY][tileLeft])) {
+		if (tileLeftMid <= 0
+			|| isSolid(levelData[tileY][tileLeftMid])
+			|| isSolid(levelData[tileLeftUp][tileLeftMid])
+			|| isSolid(levelData[tileLeftDown][tileLeftMid])) {
+
 			collidedLeft = true;
-			penetration = (position.x - size.x / 2.0f) - (MAP_TILE_SIZE * (tileLeft + 1));
+			penetration = (position.x - size.x / 2.0f) - (MAP_TILE_SIZE * (tileLeftMid + 1));
 			position.x -= (penetration + 0.001f);
 
 			// stops the player movement but allows player to continue moving in the other direction
@@ -321,11 +345,11 @@ private:
 		}
 
 		// bottom
-		worldToTileCoordinates(position.x, position.y - size.y / 2.0f, tileX, tileDown);
-		if (isSolid(levelData[tileDown][tileX])) {
+		if (isSolid(levelData[tileDownMid][tileX])) {
+
 			collidedBottom = true;
 			velocity.y = 0.0f;
-			penetration = (-MAP_TILE_SIZE * tileDown) - (position.y - size.y / 2.0f);
+			penetration = (-MAP_TILE_SIZE * tileDownMid) - (position.y - size.y / 2.0f);
 			position.y += penetration + 0.001f;
 		}
 		else {
@@ -333,11 +357,11 @@ private:
 		}
 
 		// top
-		worldToTileCoordinates(position.x, position.y + size.y / 4.0f, tileX, tileUp);
-		if (isSolid(levelData[tileUp][tileX])) {
+		if (isSolid(levelData[tileUpMid][tileX])) {
+
 			collidedTop = true;
 			velocity.y = 0.0f;
-			penetration = (position.y + size.y / 4.0f) - (-MAP_TILE_SIZE * (tileUp + 1));
+			penetration = (position.y + size.y / 4.0f) - (-MAP_TILE_SIZE * (tileUpMid + 1));
 			position.y -= (penetration + 0.001f);
 		}
 		else {
