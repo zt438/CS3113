@@ -1,0 +1,86 @@
+[header]
+width=20
+height=10
+tilewidth=16
+tileheight=16
+orientation=orthogonal
+background_color=0,0,0,255
+
+[tilesets]
+tileset=../../../../2D Pixel Dungeon Asset Pack/character and tileset/Dungeon_Tileset.png,16,16,0,0
+tileset=../../../../2D Pixel Dungeon Asset Pack/character and tileset/Dungeon_Character.png,16,16,0,0
+
+[layer]
+type=Tile Layer 1
+data=
+31,3,3,2,3,4,3,3,2,5,3,3,3,4,6,0,0,0,0,0,
+11,17,19,19,19,17,17,17,19,19,19,19,19,19,36,21,2,3,4,6,
+31,18,24,24,24,24,24,24,24,24,24,24,24,24,36,31,24,24,17,16,
+11,18,24,24,24,24,7,8,24,24,24,24,24,24,2,3,24,24,24,6,
+41,42,44,42,44,42,44,42,45,56,24,24,24,24,24,24,24,24,25,16,
+11,3,3,3,3,3,3,3,3,3,24,24,24,7,51,54,24,24,24,6,
+11,17,24,24,8,24,7,24,24,24,24,24,24,24,36,21,24,24,18,16,
+31,18,24,24,24,24,24,24,24,24,24,24,24,24,26,41,42,43,45,46,
+11,17,19,19,19,19,17,19,19,19,19,19,20,17,36,0,0,0,0,0,
+41,42,42,42,44,42,42,42,42,42,42,42,44,42,46,0,0,0,0,0
+
+[Entity]
+# Priest
+type=Player
+location=2,8,1,1
+
+[Entity]
+# Skull
+type=Skull
+location=7,3,1,1
+
+[Entity]
+# Skull
+type=Skull
+location=12,5,1,1
+
+[Entity]
+# Skull
+type=Skull
+location=9,8,1,1
+
+[Entity]
+# torch
+type=Torch
+location=4,1,1,1
+
+[Entity]
+# torch
+type=Torch
+location=10,1,1,1
+
+[Entity]
+# torch
+type=Side_Torch
+location=16,3,1,1
+
+[Entity]
+# torch
+type=Side_Torch
+location=16,7,1,1
+
+[Entity]
+# level1_exit
+type=Exit
+location=18,5,1,1
+
+[Entity]
+# level1_door
+type=Door
+location=15,5,1,1
+
+[Entity]
+# torch
+type=Torch
+location=4,6,1,1
+
+[Entity]
+# key
+type=Key
+location=2,3,1,1
+
