@@ -22,6 +22,10 @@
 #include <string>
 #include <iostream>
 #include <sstream>
+
+// for AI
+#include <queue>
+#include <utility> // for pair
 using namespace std;
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -40,7 +44,7 @@ float accumulator = 0.0f;
 #define MOVEMENT_DELAY 0.2f
 
 enum GameState { STATE_TITLE, STATE_GAME, STATE_GAMEOVER };
-enum EntityType { ENTITY_PLAYER, ENTITY_SKULL, ENTITY_TORCH, ENTITY_SIDE_TORCH, ENTITY_DOOR, ENTITY_KEY, ENTITY_EXIT };
+enum EntityType { ENTITY_NONE, ENTITY_PLAYER, ENTITY_SKULL, ENTITY_TORCH, ENTITY_SIDE_TORCH, ENTITY_DOOR, ENTITY_KEY, ENTITY_EXIT };
 enum EntityState { STATE_IDLE, STATE_CHASE };
 
 GameState state;
@@ -59,6 +63,7 @@ int currentIndex = 0;
 int mapWidth;
 int mapHeight;
 short **levelData;
+EntityType **entityPositionData; // for movement checks
 
 GLuint font;
 GLuint playerSpriteSheet;
@@ -194,6 +199,11 @@ public:
 	float height;
 };
 
+void worldToTileCoordinates(float worldX, float worldY, int& gridX, int& gridY) {
+	gridX = (int)(worldX / MAP_TILE_SIZE);
+	gridY = (int)(worldY / -MAP_TILE_SIZE);
+}
+
 class Entity {
 public:
 	Entity() {}
@@ -215,45 +225,121 @@ public:
 			int tileX, tileY;
 			worldToTileCoordinates(position.x, position.y, tileX, tileY);
 
-			if (isSolid(levelData[tileY][tileX + 1])) {
+			if (isSolid(levelData[tileY][tileX + 1]) 
+				|| entityPositionData[tileY][tileX + 1] == ENTITY_DOOR
+				|| entityPositionData[tileY][tileX + 1] == ENTITY_SKULL) {
 				rightBlocked = true;
 			}
 			else {
 				rightBlocked = false;
 			}
-			if (isSolid(levelData[tileY][tileX - 1])) {
+			if (isSolid(levelData[tileY][tileX - 1])
+				|| entityPositionData[tileY][tileX - 1] == ENTITY_DOOR
+				|| entityPositionData[tileY][tileX - 1] == ENTITY_SKULL) {
 				leftBlocked = true;
 			}
 			else {
 				leftBlocked = false;
 			}
-			if (isSolid(levelData[tileY - 1][tileX])) {
+			if (isSolid(levelData[tileY - 1][tileX])
+				|| entityPositionData[tileY - 1][tileX] == ENTITY_DOOR
+				|| entityPositionData[tileY - 1][tileX] == ENTITY_SKULL) {
 				upBlocked = true;
 			}
 			else {
 				upBlocked = false;
 			}
-			if (isSolid(levelData[tileY + 1][tileX])) {
+			if (isSolid(levelData[tileY + 1][tileX])
+				|| entityPositionData[tileY + 1][tileX] == ENTITY_DOOR
+				|| entityPositionData[tileY + 1][tileX] == ENTITY_SKULL) {
 				downBlocked = true;
 			}
 			else {
 				downBlocked = false;
 			}
+
+			if (entityType == ENTITY_SKULL) {
+				// check if player is in line of sight
+				queue<pair<int, int>> lineOfSight;
+				// check immediate surrounding (1 tile in each cardinal direction)
+				lineOfSight.push(pair<int, int>(tileY, tileX + 1));
+				lineOfSight.push(pair<int, int>(tileY, tileX - 1));
+				lineOfSight.push(pair<int, int>(tileY + 1, tileX));
+				lineOfSight.push(pair<int, int>(tileY - 1, tileX));
+
+				// change entity state to chasing if player is in line of sight
+				while (!lineOfSight.empty()) {
+					int checkY = lineOfSight.front().first;
+					int checkX = lineOfSight.front().second;
+
+					if (entityPositionData[checkY][checkX] == ENTITY_PLAYER) {
+						currentState = STATE_CHASE;
+						break;
+					}
+					if (!isSolid(levelData[checkY][checkX])) {
+						// check next neighbor if current distance from original position is less than 2
+						if ((abs(tileY - checkY) < 2 || abs(tileX - checkX) < 2)
+							&& (tileY != checkY && tileX != checkX)) {
+							lineOfSight.push(pair<int, int>(checkY, checkX + 1));
+							lineOfSight.push(pair<int, int>(checkY, checkX - 1));
+							lineOfSight.push(pair<int, int>(checkY + 1, checkX));
+							lineOfSight.push(pair<int, int>(checkY - 1, checkX));
+						}
+					}
+					lineOfSight.pop();
+				}
+			}
 		}
 	}
+
+	void clearPositionData() {
+		int tileX, tileY;
+		worldToTileCoordinates(position.x, position.y, tileX, tileY);
+		entityPositionData[tileY][tileX] = ENTITY_NONE;
+	};
+	void setPositionData() {
+		int tileX, tileY;
+		worldToTileCoordinates(position.x, position.y, tileX, tileY);
+		entityPositionData[tileY][tileX] = entityType;
+	};
 
 	// basic movement AI for non static enemy only
 	void Move(glm::vec3 playerPosition) {
 		if (currentState == STATE_IDLE) {
+			int tileX, tileY;
+			worldToTileCoordinates(position.x, position.y, tileX, tileY);
+
 			// pick a random nonblocked direction and move that way
 			vector<string> potentialDirections;
-			if (!leftBlocked) potentialDirections.push_back("left");
-			if (!rightBlocked) potentialDirections.push_back("right");
-			if (!upBlocked) potentialDirections.push_back("up");
-			if (!downBlocked) potentialDirections.push_back("down");
+			if (!(isSolid(levelData[tileY][tileX - 1])
+				|| entityPositionData[tileY][tileX - 1] == ENTITY_DOOR
+				|| entityPositionData[tileY][tileX - 1] == ENTITY_SKULL)) {
+				potentialDirections.push_back("left"); 
+			}
+			if (!(isSolid(levelData[tileY][tileX + 1])
+				|| entityPositionData[tileY][tileX + 1] == ENTITY_DOOR
+				|| entityPositionData[tileY][tileX + 1] == ENTITY_SKULL)) {
+				potentialDirections.push_back("right");
+			}
+			if (!(isSolid(levelData[tileY - 1][tileX])
+				|| entityPositionData[tileY - 1][tileX] == ENTITY_DOOR
+				|| entityPositionData[tileY - 1][tileX] == ENTITY_SKULL)) {
+				potentialDirections.push_back("up");
+			}
+			if (!(isSolid(levelData[tileY + 1][tileX])
+				|| entityPositionData[tileY + 1][tileX] == ENTITY_DOOR
+				|| entityPositionData[tileY + 1][tileX] == ENTITY_SKULL)) {
+				potentialDirections.push_back("down");
+			}
+
+			if (potentialDirections.empty()) {
+				// no movement if no moves available
+				return;
+			}
 
 			int randomMove = rand() % potentialDirections.size();
-
+			
+			clearPositionData();
 			// make the move
 			if (potentialDirections[randomMove] == "left") {
 				position.x -= MAP_TILE_SIZE;
@@ -269,6 +355,7 @@ public:
 			else if (potentialDirections[randomMove] == "down") {
 				position.y -= MAP_TILE_SIZE;
 			}
+			setPositionData();
 		}
 		else if (currentState == STATE_CHASE) {
 			// move towards the player
@@ -276,6 +363,12 @@ public:
 	}
 
 	bool collided(Entity& other) {
+		// just check if occupying the same tile
+		int thisTileX, thisTileY, otherTileX, otherTileY;
+		worldToTileCoordinates(position.x, position.y, thisTileX, thisTileY);
+		worldToTileCoordinates(other.position.x, other.position.y, otherTileX, otherTileY);
+
+		return ((thisTileX == otherTileX) && (thisTileY == otherTileY));
 	}
 
 	SheetSprite sprite;
@@ -296,10 +389,6 @@ public:
 	EntityState currentState = STATE_IDLE;
 
 private:
-	void worldToTileCoordinates(float worldX, float worldY, int& gridX, int& gridY) {
-		gridX = (int)(worldX / MAP_TILE_SIZE);
-		gridY = (int)(worldY / -MAP_TILE_SIZE);
-	}
 
 	bool isSolid(int tileIndex) {
 		// the walls
@@ -396,8 +485,10 @@ bool readHeader(std::ifstream &stream) {
 	}
 	else { // allocate our map data
 		levelData = new short*[mapHeight];
+		entityPositionData = new EntityType*[mapHeight];
 		for (int i = 0; i < mapHeight; ++i) {
 			levelData[i] = new short[mapWidth];
+			entityPositionData[i] = new EntityType[mapWidth];
 		}
 		return true;
 	}
@@ -427,6 +518,7 @@ bool readLayerData(std::ifstream &stream) {
 					else {
 						levelData[y][x] = 0;
 					}
+					entityPositionData[y][x] = ENTITY_NONE;
 				}
 			}
 		}
@@ -459,6 +551,10 @@ void placeEntity(const string& type, float x, float y) {
 		doors.push_back(Entity(glm::vec3(x, y, 1), glm::vec3(MAP_TILE_SIZE, MAP_TILE_SIZE, 1), true, ENTITY_DOOR, true));
 		doors[doors.size() - 1].sprite = SheetSprite(mapSpriteSheet, 0.7f, 0.4f, 0.1f, 0.1f, 0.10f);
 	}
+	else if (type == "Exit") {
+		exitLadder = Entity(glm::vec3(x, y, 1), glm::vec3(MAP_TILE_SIZE, MAP_TILE_SIZE, 1), true, ENTITY_EXIT, true);
+		exitLadder.sprite = SheetSprite(mapSpriteSheet, 0.9f, 0.3f, 0.1f, 0.1f, 0.10f);
+	}
 }
 
 bool readEntityData(std::ifstream &stream) {
@@ -485,6 +581,18 @@ bool readEntityData(std::ifstream &stream) {
 			float placeX = atoi(xPosition.c_str())*MAP_TILE_SIZE + MAP_TILE_SIZE / 2;
 			float placeY = atoi(yPosition.c_str())*-MAP_TILE_SIZE + MAP_TILE_SIZE / 2;
 			placeEntity(type, placeX, placeY);
+
+			int tileX, tileY;
+			worldToTileCoordinates(placeX, placeY, tileX, tileY);
+			if (type == "Player") {
+				entityPositionData[tileY][tileX] = ENTITY_PLAYER;
+			}
+			else if (type == "Skull") {
+				entityPositionData[tileY][tileX] = ENTITY_SKULL;
+			}
+			else if (type == "Door") {
+				entityPositionData[tileY][tileX] = ENTITY_DOOR;
+			}
 		}
 	}
 	return true;
@@ -599,7 +707,9 @@ int main(int argc, char *argv[])
 				if (keys[SDL_SCANCODE_LEFT]) {
 					player.faceRight = false;
 					if (!player.leftBlocked) {
+						player.clearPositionData();
 						player.position.x -= MAP_TILE_SIZE;
+						player.setPositionData();
 					}
 					
 					for (int i = 0; i < enemies.size(); i++) {
@@ -610,7 +720,9 @@ int main(int argc, char *argv[])
 				else if (keys[SDL_SCANCODE_RIGHT]) {
 					player.faceRight = true;
 					if (!player.rightBlocked) {
+						player.clearPositionData();
 						player.position.x += MAP_TILE_SIZE;
+						player.setPositionData();
 					}
 
 					for (int i = 0; i < enemies.size(); i++) {
@@ -620,7 +732,9 @@ int main(int argc, char *argv[])
 				}
 				else if (keys[SDL_SCANCODE_DOWN]) {
 					if (!player.downBlocked) {
+						player.clearPositionData();
 						player.position.y -= MAP_TILE_SIZE;
+						player.setPositionData();
 					}
 
 					for (int i = 0; i < enemies.size(); i++) {
@@ -630,7 +744,9 @@ int main(int argc, char *argv[])
 				}
 				else if (keys[SDL_SCANCODE_UP]) {
 					if (!player.upBlocked) {
+						player.clearPositionData();
 						player.position.y += MAP_TILE_SIZE;
+						player.setPositionData();
 					}
 
 					for (int i = 0; i < enemies.size(); i++) {
@@ -715,6 +831,12 @@ int main(int argc, char *argv[])
 				program.SetModelMatrix(modelMatrix);
 				door.Draw(program);
 			}
+
+			// draw exit
+			modelMatrix = glm::mat4(1.0f);
+			modelMatrix = glm::translate(modelMatrix, exitLadder.position);
+			program.SetModelMatrix(modelMatrix);
+			exitLadder.Draw(program);
 
 			// draw player
 			modelMatrix = glm::mat4(1.0f);
