@@ -26,6 +26,7 @@
 // for AI
 #include <queue>
 #include <utility> // for pair
+#include <tuple>
 using namespace std;
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -43,9 +44,10 @@ float accumulator = 0.0f;
 
 #define MOVEMENT_DELAY 0.2f
 
-enum GameState { STATE_TITLE, STATE_GAME, STATE_GAMEOVER };
-enum EntityType { ENTITY_NONE, ENTITY_PLAYER, ENTITY_SKULL, ENTITY_TORCH, ENTITY_SIDE_TORCH, ENTITY_DOOR, ENTITY_KEY, ENTITY_EXIT };
-enum EntityState { STATE_IDLE, STATE_CHASE };
+enum GameState { STATE_TITLE, STATE_GAME, STATE_GAMEOVER, STATE_NEXT_LEVEL };
+enum EntityType { ENTITY_NONE, ENTITY_PLAYER, ENTITY_SKULL, ENTITY_TORCH, ENTITY_SIDE_TORCH, ENTITY_DOOR, ENTITY_KEY, ENTITY_EXIT, ENTITY_SWORD };
+enum EntityState { ENTITY_IDLE, ENTITY_CHASE };
+enum Direction { DIRECTION_NONE, DIRECTION_UP, DIRECTION_DOWN, DIRECTION_LEFT, DIRECTION_RIGHT };
 
 GameState state;
 
@@ -57,7 +59,7 @@ glm::mat4 viewMatrix;
 const int animationFrames[] = { 0, 1, 2, 3 };
 const int numFrames = 4;
 float animationElapsed = 0.0f;
-float framesPerSecond = 4.0f;
+float framesPerSecond = 10.0f;
 int currentIndex = 0;
 
 int mapWidth;
@@ -72,7 +74,11 @@ GLuint torchSpriteSheet;
 GLuint sideTorchSpriteSheet;
 GLuint keySpriteSheet;
 GLuint mapSpriteSheet;
+GLuint swordSprite;
 string gameOverMessage = "";
+
+int currentLevel = 1;
+int keyCount = 0;
 
 SDL_Window* displayWindow;
 
@@ -104,7 +110,7 @@ void DrawText(ShaderProgram &program, int fontTexture, std::string text, float s
 	std::vector<float> vertexData;
 	std::vector<float> texCoordData;
 
-	for (int i = 0; i < text.size(); i++) {
+	for (unsigned i = 0; i < text.size(); i++) {
 		int spriteIndex = (int)text[i];
 
 		float texture_x = (float)(spriteIndex % 16) / 16.0f;
@@ -156,39 +162,39 @@ public:
 	}
 
 	void Draw(ShaderProgram &program) {
-		glBindTexture(GL_TEXTURE_2D, textureID);
+glBindTexture(GL_TEXTURE_2D, textureID);
 
-		GLfloat texCoords[] = {
-			u, v + height,
-			u + width, v,
-			u, v,
-			u + width, v,
-			u, v + height,
-			u + width, v + height
-		};
+GLfloat texCoords[] = {
+	u, v + height,
+	u + width, v,
+	u, v,
+	u + width, v,
+	u, v + height,
+	u + width, v + height
+};
 
-		float aspect = 1;
+float aspect = 1;
 
-		float vertices[] = {
-			-0.5f * size * aspect, -0.5f * size,
-			0.5f * size * aspect, 0.5f * size,
-			-0.5f * size * aspect, 0.5f * size,
-			0.5f * size * aspect, 0.5f * size,
-			-0.5f * size * aspect, -0.5f * size,
-			0.5f * size * aspect, -0.5f * size,
-		};
+float vertices[] = {
+	-0.5f * size * aspect, -0.5f * size,
+	0.5f * size * aspect, 0.5f * size,
+	-0.5f * size * aspect, 0.5f * size,
+	0.5f * size * aspect, 0.5f * size,
+	-0.5f * size * aspect, -0.5f * size,
+	0.5f * size * aspect, -0.5f * size,
+};
 
-		glUseProgram(program.programID);
+glUseProgram(program.programID);
 
-		glVertexAttribPointer(program.positionAttribute, 2, GL_FLOAT, false, 0, vertices);
-		glEnableVertexAttribArray(program.positionAttribute);
-		glVertexAttribPointer(program.texCoordAttribute, 2, GL_FLOAT, false, 0, texCoords);
-		glEnableVertexAttribArray(program.texCoordAttribute);
+glVertexAttribPointer(program.positionAttribute, 2, GL_FLOAT, false, 0, vertices);
+glEnableVertexAttribArray(program.positionAttribute);
+glVertexAttribPointer(program.texCoordAttribute, 2, GL_FLOAT, false, 0, texCoords);
+glEnableVertexAttribArray(program.texCoordAttribute);
 
-		glDrawArrays(GL_TRIANGLES, 0, 6);
+glDrawArrays(GL_TRIANGLES, 0, 6);
 
-		glDisableVertexAttribArray(program.positionAttribute);
-		glDisableVertexAttribArray(program.texCoordAttribute);
+glDisableVertexAttribArray(program.positionAttribute);
+glDisableVertexAttribArray(program.texCoordAttribute);
 	}
 
 	float size;
@@ -202,6 +208,125 @@ public:
 void worldToTileCoordinates(float worldX, float worldY, int& gridX, int& gridY) {
 	gridX = (int)(worldX / MAP_TILE_SIZE);
 	gridY = (int)(worldY / -MAP_TILE_SIZE);
+}
+
+bool isSolid(int tileIndex) {
+	// the walls
+	return ((tileIndex >= 0 && tileIndex <= 5)
+		|| tileIndex == 10 || tileIndex == 15
+		|| tileIndex == 10 || tileIndex == 15
+		|| tileIndex == 20 || tileIndex == 25
+		|| tileIndex == 30 || tileIndex == 35
+		|| (tileIndex >= 40 && tileIndex <= 45)
+		|| (tileIndex >= 50 && tileIndex <= 55));
+}
+
+int distance(int tileX, int tileY, int goalX, int goalY) {
+	return abs(tileX - goalX) + abs(tileY - goalY);
+}
+
+struct TupleCompare {
+	bool operator()(const tuple<int, int, int, int>& first, const tuple<int, int, int, int>& second) {
+		return get<2>(first) + get<3>(first) > get<2>(second) + get<3>(second);
+	}
+};
+
+Direction aStarSearch(int tileX, int tileY, int goalX, int goalY) {
+	Direction result = DIRECTION_NONE;
+
+	// stores the cost for each position in the level
+	// tuple<prevX, prevY, cost>
+	vector<vector<tuple<int, int, int>>> path(mapHeight,
+		vector<tuple<int, int, int>>(mapWidth, make_tuple(INT_MAX, INT_MAX, INT_MAX)));
+
+	path[tileY][tileX] = make_tuple(-1, -1, 0);
+
+	// pq contains tuple<tileX, tileY, cost, distance>
+	priority_queue<tuple<int, int, int, int>, vector<tuple<int, int, int, int>>, TupleCompare> pq;
+	pq.push(make_tuple(tileX, tileY, 0, distance(tileX, tileY, goalX, goalY)));
+	int currentX = -1, currentY = -1;
+
+	while (!pq.empty()) {
+		currentX = get<0>(pq.top());
+		currentY = get<1>(pq.top());
+		int currentCost = get<2>(pq.top());
+		int currentDist = get<3>(pq.top());
+		pq.pop();
+
+		if (currentX == goalX && currentY == goalY) {
+			break;
+		}
+
+		// check each direction
+		if (!isSolid(levelData[currentY + 1][currentX])
+			&& entityPositionData[currentY + 1][currentX] != ENTITY_SKULL
+			&& entityPositionData[currentY + 1][currentX] != ENTITY_DOOR) {
+
+			if (currentCost + 1 < get<2>(path[currentY + 1][currentX])) {
+				pq.push(make_tuple(currentX, currentY + 1, currentCost + 1, distance(currentX, currentY + 1, goalX, goalY)));
+				path[currentY + 1][currentX] = make_tuple(currentX, currentY, currentCost + 1);
+			}
+		}
+
+		if (!isSolid(levelData[currentY - 1][currentX])
+			&& entityPositionData[currentY - 1][currentX] != ENTITY_SKULL
+			&& entityPositionData[currentY - 1][currentX] != ENTITY_DOOR) {
+
+			if (currentCost + 1 < get<2>(path[currentY - 1][currentX])) {
+				pq.push(make_tuple(currentX, currentY - 1, currentCost + 1, distance(currentX, currentY - 1, goalX, goalY)));
+				path[currentY - 1][currentX] = make_tuple(currentX, currentY, currentCost + 1);
+			}
+		}
+
+		if (!isSolid(levelData[currentY][currentX + 1])
+			&& entityPositionData[currentY][currentX + 1] != ENTITY_SKULL
+			&& entityPositionData[currentY][currentX + 1] != ENTITY_DOOR) {
+
+			if (currentCost + 1 < get<2>(path[currentY][currentX + 1])) {
+				pq.push(make_tuple(currentX + 1, currentY, currentCost + 1, distance(currentX + 1, currentY, goalX, goalY)));
+				path[currentY][currentX + 1] = make_tuple(currentX, currentY, currentCost + 1);
+			}
+		}
+
+		if (!isSolid(levelData[currentY][currentX - 1])
+			&& entityPositionData[currentY][currentX - 1] != ENTITY_SKULL
+			&& entityPositionData[currentY][currentX - 1] != ENTITY_DOOR) {
+
+			if (currentCost + 1 < get<2>(path[currentY][currentX - 1])) {
+				pq.push(make_tuple(currentX - 1, currentY, currentCost + 1, distance(currentX - 1, currentY, goalX, goalY)));
+				path[currentY][currentX - 1] = make_tuple(currentX, currentY, currentCost + 1);
+			}
+		}
+	}
+
+	if (currentX >= 0 && currentY >= 0) {
+		int prevX = get<0>(path[currentY][currentX]);
+		int prevY = get<1>(path[currentY][currentX]);
+		while (get<0>(path[prevY][prevX]) != -1
+			&& get<1>(path[prevY][prevX]) != -1) {
+
+			currentX = get<0>(path[currentY][currentX]);
+			currentY = get<1>(path[currentY][currentX]);
+			prevX = get<0>(path[currentY][currentX]);
+			prevY = get<1>(path[currentY][currentX]);
+		}
+
+		// figure out the direction
+		if (currentX > prevX) {
+			result = DIRECTION_RIGHT;
+		}
+		else if (currentX < prevX) {
+			result = DIRECTION_LEFT;
+		}
+		else if (currentY < prevY) {
+			result = DIRECTION_UP;
+		}
+		else if (currentY > prevY) {
+			result = DIRECTION_DOWN;
+		}
+
+	}
+	return result;
 }
 
 class Entity {
@@ -258,7 +383,7 @@ public:
 				downBlocked = false;
 			}
 
-			if (entityType == ENTITY_SKULL) {
+			if (entityType == ENTITY_SKULL && currentState == ENTITY_IDLE) {
 				// check if player is in line of sight
 				queue<pair<int, int>> lineOfSight;
 				// check immediate surrounding (1 tile in each cardinal direction)
@@ -273,17 +398,18 @@ public:
 					int checkX = lineOfSight.front().second;
 
 					if (entityPositionData[checkY][checkX] == ENTITY_PLAYER) {
-						currentState = STATE_CHASE;
+						currentState = ENTITY_CHASE;
 						break;
 					}
 					if (!isSolid(levelData[checkY][checkX])) {
 						// check next neighbor if current distance from original position is less than 2
-						if ((abs(tileY - checkY) < 2 || abs(tileX - checkX) < 2)
-							&& (tileY != checkY && tileX != checkX)) {
+						if (abs(tileY - checkY) + abs(tileX - checkX) < 2) {
+							if (tileY != checkY || tileX != checkX) {
 							lineOfSight.push(pair<int, int>(checkY, checkX + 1));
 							lineOfSight.push(pair<int, int>(checkY, checkX - 1));
 							lineOfSight.push(pair<int, int>(checkY + 1, checkX));
 							lineOfSight.push(pair<int, int>(checkY - 1, checkX));
+							}
 						}
 					}
 					lineOfSight.pop();
@@ -305,7 +431,36 @@ public:
 
 	// basic movement AI for non static enemy only
 	void Move(glm::vec3 playerPosition) {
-		if (currentState == STATE_IDLE) {
+		Direction next = DIRECTION_NONE;
+		if (currentState == ENTITY_CHASE) {
+			// move towards the player
+			int playerTileX, playerTileY, thisTileX, thisTileY;
+			worldToTileCoordinates(playerPosition.x, playerPosition.y, playerTileX, playerTileY);
+			worldToTileCoordinates(position.x, position.y, thisTileX, thisTileY);
+
+			// A* search is not really necessary since skull only sees player if within 2 tile distance
+			// and the walls are at least 2 tiles wide
+			next = aStarSearch(thisTileX, thisTileY, playerTileX, playerTileY);
+
+			clearPositionData();
+			// make the move
+			if (next == DIRECTION_LEFT) {
+				position.x -= MAP_TILE_SIZE;
+				faceRight = false;
+			}
+			else if (next == DIRECTION_RIGHT) {
+				position.x += MAP_TILE_SIZE;
+				faceRight = true;
+			}
+			else if (next == DIRECTION_UP) {
+				position.y += MAP_TILE_SIZE;
+			}
+			else if (next == DIRECTION_DOWN) {
+				position.y -= MAP_TILE_SIZE;
+			}
+			setPositionData();
+		}
+		else if (currentState == ENTITY_IDLE || next == DIRECTION_NONE) {
 			int tileX, tileY;
 			worldToTileCoordinates(position.x, position.y, tileX, tileY);
 
@@ -357,10 +512,10 @@ public:
 			}
 			setPositionData();
 		}
-		else if (currentState == STATE_CHASE) {
-			// move towards the player
-		}
 	}
+
+	void placeKey(Direction d);
+	void attack(Direction d);
 
 	bool collided(Entity& other) {
 		// just check if occupying the same tile
@@ -385,21 +540,10 @@ public:
 	bool rightBlocked = false;
 	bool upBlocked = false;
 	bool downBlocked = false;
+
+	int timeRemaining = 2; // for sword entity only
 	
-	EntityState currentState = STATE_IDLE;
-
-private:
-
-	bool isSolid(int tileIndex) {
-		// the walls
-		return ((tileIndex >= 0 && tileIndex <= 5)
-			|| tileIndex == 10 || tileIndex == 15
-			|| tileIndex == 10 || tileIndex == 15
-			|| tileIndex == 20 || tileIndex == 25
-			|| tileIndex == 30 || tileIndex == 35
-			|| (tileIndex >= 40 && tileIndex <= 45)
-			|| (tileIndex >= 50 && tileIndex <= 55));
-	}
+	EntityState currentState = ENTITY_IDLE;
 };
 
 Entity player;
@@ -408,6 +552,81 @@ vector<Entity> torches;
 vector<Entity> keysVector;
 vector<Entity> doors;
 Entity exitLadder;
+vector<Entity> swords;
+
+void Entity::placeKey(Direction d) {
+	if (keyCount > 0) {
+		int tileX, tileY;
+		worldToTileCoordinates(position.x, position.y, tileX, tileY);
+
+		switch (d) {
+		case DIRECTION_UP:
+			if (entityPositionData[tileY - 1][tileX] == ENTITY_DOOR) {
+				keysVector.push_back(Entity(glm::vec3(position.x, position.y + MAP_TILE_SIZE, 1),
+					glm::vec3(MAP_TILE_SIZE, MAP_TILE_SIZE, 1), true, ENTITY_KEY, true));
+				keyCount--;
+			}
+			break;
+		case DIRECTION_DOWN:
+			if (entityPositionData[tileY + 1][tileX] == ENTITY_DOOR) {
+				keysVector.push_back(Entity(glm::vec3(position.x, position.y - MAP_TILE_SIZE, 1),
+					glm::vec3(MAP_TILE_SIZE, MAP_TILE_SIZE, 1), true, ENTITY_KEY, true));
+				keyCount--;
+			}
+			break;
+		case DIRECTION_LEFT:
+			if (entityPositionData[tileY][tileX - 1] == ENTITY_DOOR) {
+				keysVector.push_back(Entity(glm::vec3(position.x - MAP_TILE_SIZE, position.y, 1),
+					glm::vec3(MAP_TILE_SIZE, MAP_TILE_SIZE, 1), true, ENTITY_KEY, true));
+				keyCount--;
+			}
+			break;
+		case DIRECTION_RIGHT:
+			if (entityPositionData[tileY][tileX + 1] == ENTITY_DOOR) {
+				keysVector.push_back(Entity(glm::vec3(position.x + MAP_TILE_SIZE, position.y, 1),
+					glm::vec3(MAP_TILE_SIZE, MAP_TILE_SIZE, 1), true, ENTITY_KEY, true));
+				keyCount--;
+			}
+			break;
+		}
+	}
+}
+
+void Entity::attack(Direction d) {
+	int tileX, tileY;
+	worldToTileCoordinates(position.x, position.y, tileX, tileY);
+
+	switch (d) {
+	case DIRECTION_UP:
+		if (entityPositionData[tileY - 1][tileX] == ENTITY_SKULL) {
+			swords.push_back(Entity(glm::vec3(position.x, position.y + MAP_TILE_SIZE, 1),
+				glm::vec3(MAP_TILE_SIZE, MAP_TILE_SIZE, 1), true, ENTITY_SWORD, true));
+			swords[swords.size() - 1].sprite = SheetSprite(swordSprite, 0.0f, 0.0f, 0.25f, 1.0f, 0.10f);
+		}
+		break;
+	case DIRECTION_DOWN:
+		if (entityPositionData[tileY + 1][tileX] == ENTITY_SKULL) {
+			swords.push_back(Entity(glm::vec3(position.x, position.y - MAP_TILE_SIZE, 1),
+				glm::vec3(MAP_TILE_SIZE, MAP_TILE_SIZE, 1), true, ENTITY_SWORD, true));
+			swords[swords.size() - 1].sprite = SheetSprite(swordSprite, 0.5f, 0.0f, 0.25f, 1.0f, 0.10f);
+		}
+		break;
+	case DIRECTION_LEFT:
+		if (entityPositionData[tileY][tileX - 1] == ENTITY_SKULL) {
+			swords.push_back(Entity(glm::vec3(position.x - MAP_TILE_SIZE, position.y, 1),
+				glm::vec3(MAP_TILE_SIZE, MAP_TILE_SIZE, 1), true, ENTITY_SWORD, true));
+			swords[swords.size() - 1].sprite = SheetSprite(swordSprite, 0.75f, 0.0f, 0.25f, 1.0f, 0.10f);
+		}
+		break;
+	case DIRECTION_RIGHT:
+		if (entityPositionData[tileY][tileX + 1] == ENTITY_SKULL) {
+			swords.push_back(Entity(glm::vec3(position.x + MAP_TILE_SIZE, position.y, 1),
+				glm::vec3(MAP_TILE_SIZE, MAP_TILE_SIZE, 1), true, ENTITY_SWORD, true));
+			swords[swords.size() - 1].sprite = SheetSprite(swordSprite, 0.25f, 0.0f, 0.25f, 1.0f, 0.10f);
+		}
+		break;
+	}
+}
 
 vector<float> vertexData;
 vector<float> texCoordData;
@@ -635,6 +854,7 @@ int main(int argc, char *argv[])
 	sideTorchSpriteSheet = LoadTexture(RESOURCE_FOLDER"side_torch_framesheet.png");
 	keySpriteSheet = LoadTexture(RESOURCE_FOLDER"key_framesheet.png");
 	mapSpriteSheet = LoadTexture(RESOURCE_FOLDER"Dungeon_Tileset.png");
+	swordSprite = LoadTexture(RESOURCE_FOLDER"sword.png");
 
 	state = STATE_TITLE;
 
@@ -665,14 +885,41 @@ int main(int argc, char *argv[])
 			if (event.type == SDL_QUIT || event.type == SDL_WINDOWEVENT_CLOSE) {
 				done = true;
 			}
+			// quit the game
+			if (keys[SDL_SCANCODE_Q]) {
+				done = true;
+			}
 			if (state == STATE_TITLE) {
 				if (keys[SDL_SCANCODE_SPACE]) {
 					setupScene("level1.txt");
 
+					// center camera on the player
+					viewMatrix = glm::mat4(1.0f);
+					viewMatrix = glm::scale(viewMatrix, glm::vec3(2.0f, 2.0f, 1.0f));
+					viewMatrix = glm::translate(viewMatrix, -player.position);
+					program.SetViewMatrix(viewMatrix);
+
 					state = STATE_GAME;
 				}
 			}
-			else if (state == STATE_GAME) {
+			else if (state == STATE_NEXT_LEVEL) {
+				currentLevel++;
+				if (keys[SDL_SCANCODE_SPACE]) {
+					setupScene("level1.txt");
+
+					// center camera on the player
+					viewMatrix = glm::mat4(1.0f);
+					viewMatrix = glm::scale(viewMatrix, glm::vec3(2.0f, 2.0f, 1.0f));
+					viewMatrix = glm::translate(viewMatrix, -player.position);
+					program.SetViewMatrix(viewMatrix);
+
+					state = STATE_GAME;
+				}
+				if (keys[SDL_SCANCODE_ESCAPE]) {
+					state = STATE_TITLE;
+					int currentLevel = 1;
+					int keyCount = 0;
+				}
 			}
 			else if (state == STATE_GAMEOVER) {
 				if (keys[SDL_SCANCODE_ESCAPE]) {
@@ -699,11 +946,27 @@ int main(int argc, char *argv[])
 
 			break;
 
+		case STATE_NEXT_LEVEL:
+			glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+			program.SetViewMatrix(glm::mat4(1.0f));
+
+			modelMatrix = glm::mat4(1.0f);
+			modelMatrix = glm::translate(modelMatrix, glm::vec3(-0.8f, 0.1f, 0.0f));
+			program.SetModelMatrix(modelMatrix);
+			DrawText(program, font, "Space : Continue", 0.1f, 0);
+
+			modelMatrix = glm::mat4(1.0f);
+			modelMatrix = glm::translate(modelMatrix, glm::vec3(-1.2f, -0.4f, 0.0f));
+			program.SetModelMatrix(modelMatrix);
+			DrawText(program, font, "ESC : Return to Title Screen", 0.09f, 0);
+
+			break;
+
 		case STATE_GAME:
 			glClearColor(0.1412f, 0.0745f, 0.1020f, 1.0f);
 			renderMap();
 
-			if (currentMovementDelay <= 0) {
+			if (currentMovementDelay <= 0 && swords.empty()) {
 				if (keys[SDL_SCANCODE_LEFT]) {
 					player.faceRight = false;
 					if (!player.leftBlocked) {
@@ -711,8 +974,13 @@ int main(int argc, char *argv[])
 						player.position.x -= MAP_TILE_SIZE;
 						player.setPositionData();
 					}
+					else {
+						player.placeKey(DIRECTION_LEFT);
+						player.attack(DIRECTION_LEFT);
+						continue;
+					}
 					
-					for (int i = 0; i < enemies.size(); i++) {
+					for (unsigned i = 0; i < enemies.size(); i++) {
 						enemies[i].Move(player.position);
 					}
 					currentMovementDelay = MOVEMENT_DELAY;
@@ -724,8 +992,13 @@ int main(int argc, char *argv[])
 						player.position.x += MAP_TILE_SIZE;
 						player.setPositionData();
 					}
+					else {
+						player.placeKey(DIRECTION_RIGHT);
+						player.attack(DIRECTION_RIGHT);
+						continue;
+					}
 
-					for (int i = 0; i < enemies.size(); i++) {
+					for (unsigned i = 0; i < enemies.size(); i++) {
 						enemies[i].Move(player.position);
 					}
 					currentMovementDelay = MOVEMENT_DELAY;
@@ -736,8 +1009,13 @@ int main(int argc, char *argv[])
 						player.position.y -= MAP_TILE_SIZE;
 						player.setPositionData();
 					}
+					else {
+						player.placeKey(DIRECTION_DOWN);
+						player.attack(DIRECTION_DOWN);
+						continue;
+					}
 
-					for (int i = 0; i < enemies.size(); i++) {
+					for (unsigned i = 0; i < enemies.size(); i++) {
 						enemies[i].Move(player.position);
 					}
 					currentMovementDelay = MOVEMENT_DELAY;
@@ -748,8 +1026,13 @@ int main(int argc, char *argv[])
 						player.position.y += MAP_TILE_SIZE;
 						player.setPositionData();
 					}
+					else {
+						player.placeKey(DIRECTION_UP);
+						player.attack(DIRECTION_UP);
+						continue;
+					}
 
-					for (int i = 0; i < enemies.size(); i++) {
+					for (unsigned i = 0; i < enemies.size(); i++) {
 						enemies[i].Move(player.position);
 					}
 					currentMovementDelay = MOVEMENT_DELAY;
@@ -783,15 +1066,18 @@ int main(int argc, char *argv[])
 
 					// update all the sprites
 					player.sprite.u = 0.25f * currentIndex;
-					for (int i = 0; i < enemies.size(); i++) {
+					for (unsigned i = 0; i < enemies.size(); i++) {
 						enemies[i].sprite.u = 0.25f * currentIndex;
 						enemies[i].Update(FIXED_TIMESTEP);
 					}
-					for (int i = 0; i < torches.size(); i++) {
+					for (unsigned i = 0; i < torches.size(); i++) {
 						torches[i].sprite.u = 0.25f * currentIndex;
 					}
-					for (int i = 0; i < keysVector.size(); i++) {
+					for (unsigned i = 0; i < keysVector.size(); i++) {
 						keysVector[i].sprite.u = 0.25f * currentIndex;
+					}
+					for (unsigned i = 0; i < swords.size(); i++) {
+						swords[i].timeRemaining--;
 					}
 
 					animationElapsed = 0.0;
@@ -812,14 +1098,28 @@ int main(int argc, char *argv[])
 				torch.Draw(program);
 			}
 
-			for (Entity& doorKey : keysVector) {
+			for (unsigned i = 0; i < keysVector.size(); i++) {
 				modelMatrix = glm::mat4(1.0f);
-				modelMatrix = glm::translate(modelMatrix, doorKey.position);
-				if (!doorKey.faceRight) {
-					modelMatrix = glm::scale(modelMatrix, glm::vec3(-1.0f, 1.0f, 1.0f));
-				}
+				modelMatrix = glm::translate(modelMatrix, keysVector[i].position);
 				program.SetModelMatrix(modelMatrix);
-				doorKey.Draw(program);
+				keysVector[i].Draw(program);
+
+				if (keysVector[i].collided(player)) {
+					keysVector.erase(keysVector.begin() + i);
+					keyCount++;
+					i--;
+				}
+				else {
+					for (unsigned j = 0; j < doors.size(); j++) {
+						if (keysVector[i].collided(doors[j])) {
+							keysVector.erase(keysVector.begin() + i);
+							doors[j].clearPositionData();
+							doors.erase(doors.begin() + j);
+							i--;
+							break;
+						}
+					}
+				}
 			}
 
 			for (Entity& door : doors) {
@@ -854,14 +1154,59 @@ int main(int argc, char *argv[])
 				if (!enemy.faceRight) {
 					modelMatrix = glm::scale(modelMatrix, glm::vec3(-1.0f, 1.0f, 1.0f));
 				}
+				if (enemy.collided(player)) {
+					state = STATE_GAMEOVER;
+					gameOverMessage = "You Died";
+				}
 				program.SetModelMatrix(modelMatrix);
 				enemy.Draw(program);
+			}
+
+			for (unsigned i = 0; i < swords.size(); i++) {
+				modelMatrix = glm::mat4(1.0f);
+				modelMatrix = glm::translate(modelMatrix, swords[i].position);
+				if (!swords[i].faceRight) {
+					modelMatrix = glm::scale(modelMatrix, glm::vec3(-1.0f, 1.0f, 1.0f));
+				}
+				program.SetModelMatrix(modelMatrix);
+				swords[i].Draw(program);
+
+				if (swords[i].timeRemaining == 0) {
+					for (unsigned j = 0; j < enemies.size(); j++) {
+						if (enemies[j].collided(swords[i])) {
+							enemies[j].clearPositionData();
+							enemies.erase(enemies.begin() + j);
+							swords.erase(swords.begin() + i);
+							i--;
+							break;
+						}
+					}
+
+					for (unsigned i = 0; i < enemies.size(); i++) {
+						enemies[i].Move(player.position);
+					}
+				}
+			}
+
+			modelMatrix = glm::mat4(1.0f);
+			modelMatrix = glm::translate(modelMatrix, player.position);
+			modelMatrix = glm::translate(modelMatrix, glm::vec3(-0.85f, 0.45f, 0.0f));
+			program.SetModelMatrix(modelMatrix);
+			DrawText(program, font, "Keys:" + to_string(keyCount), 0.05f, 0);
+
+			modelMatrix = glm::mat4(1.0f);
+			modelMatrix = glm::translate(modelMatrix, player.position);
+			modelMatrix = glm::translate(modelMatrix, glm::vec3(0.55f, 0.45f, 0.0f));
+			program.SetModelMatrix(modelMatrix);
+			DrawText(program, font, "Q:Quit", 0.05f, 0);
+
+			if (player.collided(exitLadder)) {
+				state = STATE_NEXT_LEVEL;
 			}
 
 			break;
 
 		case STATE_GAMEOVER:
-			glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 			program.SetViewMatrix(glm::mat4(1.0f));
 
 			modelMatrix = glm::mat4(1.0f);
