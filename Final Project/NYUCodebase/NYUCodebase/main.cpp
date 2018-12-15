@@ -43,6 +43,7 @@ float accumulator = 0.0f;
 #define MAP_SPRITE_COUNT_Y 10
 
 #define MOVEMENT_DELAY 0.2f
+#define FADEOUT_TIME 5.0f
 
 enum GameState { STATE_TITLE, STATE_GAME, STATE_GAMEOVER, STATE_NEXT_LEVEL };
 enum EntityType { ENTITY_NONE, ENTITY_PLAYER, ENTITY_SKULL, ENTITY_TORCH, ENTITY_SIDE_TORCH, ENTITY_DOOR, ENTITY_KEY, ENTITY_EXIT, ENTITY_SWORD };
@@ -61,6 +62,7 @@ const int numFrames = 4;
 float animationElapsed = 0.0f;
 float framesPerSecond = 10.0f;
 int currentIndex = 0;
+float fadeout = 0.0f;
 
 int mapWidth;
 int mapHeight;
@@ -81,6 +83,10 @@ int currentLevel = 1;
 int keyCount = 0;
 
 SDL_Window* displayWindow;
+
+float lerp(float v0, float v1, float t) {
+	return (1.0 - t) * v0 + t * v1;
+}
 
 GLuint LoadTexture(const char *filePath)
 {
@@ -302,13 +308,13 @@ Direction aStarSearch(int tileX, int tileY, int goalX, int goalY) {
 	if (currentX >= 0 && currentY >= 0) {
 		int prevX = get<0>(path[currentY][currentX]);
 		int prevY = get<1>(path[currentY][currentX]);
-		while (get<0>(path[prevY][prevX]) != -1
-			&& get<1>(path[prevY][prevX]) != -1) {
-
-			currentX = get<0>(path[currentY][currentX]);
-			currentY = get<1>(path[currentY][currentX]);
-			prevX = get<0>(path[currentY][currentX]);
-			prevY = get<1>(path[currentY][currentX]);
+		while (get<0>(path[prevY][prevX]) != -1 || get<1>(path[prevY][prevX]) != -1) {
+			int newX = get<0>(path[currentY][currentX]);
+			int newY = get<1>(path[currentY][currentX]);
+			prevX = get<0>(path[newY][newX]);
+			prevY = get<1>(path[newY][newX]);
+			currentX = newX;
+			currentY = newY;
 		}
 
 		// figure out the direction
@@ -514,8 +520,8 @@ public:
 		}
 	}
 
-	void placeKey(Direction d);
-	void attack(Direction d);
+	bool placeKey(Direction d);
+	bool attack(Direction d);
 
 	bool collided(Entity& other) {
 		// just check if occupying the same tile
@@ -554,7 +560,7 @@ vector<Entity> doors;
 Entity exitLadder;
 vector<Entity> swords;
 
-void Entity::placeKey(Direction d) {
+bool Entity::placeKey(Direction d) {
 	if (keyCount > 0) {
 		int tileX, tileY;
 		worldToTileCoordinates(position.x, position.y, tileX, tileY);
@@ -565,6 +571,7 @@ void Entity::placeKey(Direction d) {
 				keysVector.push_back(Entity(glm::vec3(position.x, position.y + MAP_TILE_SIZE, 1),
 					glm::vec3(MAP_TILE_SIZE, MAP_TILE_SIZE, 1), true, ENTITY_KEY, true));
 				keyCount--;
+				return true;
 			}
 			break;
 		case DIRECTION_DOWN:
@@ -572,6 +579,7 @@ void Entity::placeKey(Direction d) {
 				keysVector.push_back(Entity(glm::vec3(position.x, position.y - MAP_TILE_SIZE, 1),
 					glm::vec3(MAP_TILE_SIZE, MAP_TILE_SIZE, 1), true, ENTITY_KEY, true));
 				keyCount--;
+				return true;
 			}
 			break;
 		case DIRECTION_LEFT:
@@ -579,6 +587,7 @@ void Entity::placeKey(Direction d) {
 				keysVector.push_back(Entity(glm::vec3(position.x - MAP_TILE_SIZE, position.y, 1),
 					glm::vec3(MAP_TILE_SIZE, MAP_TILE_SIZE, 1), true, ENTITY_KEY, true));
 				keyCount--;
+				return true;
 			}
 			break;
 		case DIRECTION_RIGHT:
@@ -586,13 +595,15 @@ void Entity::placeKey(Direction d) {
 				keysVector.push_back(Entity(glm::vec3(position.x + MAP_TILE_SIZE, position.y, 1),
 					glm::vec3(MAP_TILE_SIZE, MAP_TILE_SIZE, 1), true, ENTITY_KEY, true));
 				keyCount--;
+				return true;
 			}
 			break;
 		}
 	}
+	return false;
 }
 
-void Entity::attack(Direction d) {
+bool Entity::attack(Direction d) {
 	int tileX, tileY;
 	worldToTileCoordinates(position.x, position.y, tileX, tileY);
 
@@ -602,6 +613,7 @@ void Entity::attack(Direction d) {
 			swords.push_back(Entity(glm::vec3(position.x, position.y + MAP_TILE_SIZE, 1),
 				glm::vec3(MAP_TILE_SIZE, MAP_TILE_SIZE, 1), true, ENTITY_SWORD, true));
 			swords[swords.size() - 1].sprite = SheetSprite(swordSprite, 0.0f, 0.0f, 0.25f, 1.0f, 0.10f);
+			return true;
 		}
 		break;
 	case DIRECTION_DOWN:
@@ -609,6 +621,7 @@ void Entity::attack(Direction d) {
 			swords.push_back(Entity(glm::vec3(position.x, position.y - MAP_TILE_SIZE, 1),
 				glm::vec3(MAP_TILE_SIZE, MAP_TILE_SIZE, 1), true, ENTITY_SWORD, true));
 			swords[swords.size() - 1].sprite = SheetSprite(swordSprite, 0.5f, 0.0f, 0.25f, 1.0f, 0.10f);
+			return true;
 		}
 		break;
 	case DIRECTION_LEFT:
@@ -616,6 +629,7 @@ void Entity::attack(Direction d) {
 			swords.push_back(Entity(glm::vec3(position.x - MAP_TILE_SIZE, position.y, 1),
 				glm::vec3(MAP_TILE_SIZE, MAP_TILE_SIZE, 1), true, ENTITY_SWORD, true));
 			swords[swords.size() - 1].sprite = SheetSprite(swordSprite, 0.75f, 0.0f, 0.25f, 1.0f, 0.10f);
+			return true;
 		}
 		break;
 	case DIRECTION_RIGHT:
@@ -623,9 +637,11 @@ void Entity::attack(Direction d) {
 			swords.push_back(Entity(glm::vec3(position.x + MAP_TILE_SIZE, position.y, 1),
 				glm::vec3(MAP_TILE_SIZE, MAP_TILE_SIZE, 1), true, ENTITY_SWORD, true));
 			swords[swords.size() - 1].sprite = SheetSprite(swordSprite, 0.25f, 0.0f, 0.25f, 1.0f, 0.10f);
+			return true;
 		}
 		break;
 	}
+	return false;
 }
 
 vector<float> vertexData;
@@ -867,6 +883,9 @@ int main(int argc, char *argv[])
 
 	projectionMatrix = glm::ortho(-1.777f, 1.777f, -1.0f, 1.0f, -1.0f, 1.0f);
 
+	ShaderProgram untexturedProgram;
+	untexturedProgram.Load(RESOURCE_FOLDER"vertex.glsl", RESOURCE_FOLDER"fragment.glsl");
+
 	program.Load(RESOURCE_FOLDER"vertex_textured.glsl", RESOURCE_FOLDER"fragment_textured.glsl");
 	program.SetProjectionMatrix(projectionMatrix);
 	program.SetViewMatrix(viewMatrix);
@@ -891,6 +910,13 @@ int main(int argc, char *argv[])
 			}
 			if (state == STATE_TITLE) {
 				if (keys[SDL_SCANCODE_SPACE]) {
+					// clear out the vectors
+					enemies.clear();
+					torches.clear();
+					keysVector.clear();
+					doors.clear();
+					swords.clear();
+
 					setupScene("level1.txt");
 
 					// center camera on the player
@@ -940,7 +966,12 @@ int main(int argc, char *argv[])
 			program.SetViewMatrix(glm::mat4(1.0f));
 
 			modelMatrix = glm::mat4(1.0f);
-			modelMatrix = glm::translate(modelMatrix, glm::vec3(-1.0f, -0.3f, 0.0f));
+			modelMatrix = glm::translate(modelMatrix, glm::vec3(-0.8f, 0.4f, 0.0f));
+			program.SetModelMatrix(modelMatrix);
+			DrawText(program, font, "Some Game", 0.2f, 0);
+
+			modelMatrix = glm::mat4(1.0f);
+			modelMatrix = glm::translate(modelMatrix, glm::vec3(-0.95f, -0.3f, 0.0f));
 			program.SetModelMatrix(modelMatrix);
 			DrawText(program, font, "Press Space to Start", 0.1f, 0);
 
@@ -951,12 +982,12 @@ int main(int argc, char *argv[])
 			program.SetViewMatrix(glm::mat4(1.0f));
 
 			modelMatrix = glm::mat4(1.0f);
-			modelMatrix = glm::translate(modelMatrix, glm::vec3(-0.8f, 0.1f, 0.0f));
+			modelMatrix = glm::translate(modelMatrix, glm::vec3(-0.75f, 0.1f, 0.0f));
 			program.SetModelMatrix(modelMatrix);
 			DrawText(program, font, "Space : Continue", 0.1f, 0);
 
 			modelMatrix = glm::mat4(1.0f);
-			modelMatrix = glm::translate(modelMatrix, glm::vec3(-1.2f, -0.4f, 0.0f));
+			modelMatrix = glm::translate(modelMatrix, glm::vec3(-1.215f, -0.4f, 0.0f));
 			program.SetModelMatrix(modelMatrix);
 			DrawText(program, font, "ESC : Return to Title Screen", 0.09f, 0);
 
@@ -973,15 +1004,18 @@ int main(int argc, char *argv[])
 						player.clearPositionData();
 						player.position.x -= MAP_TILE_SIZE;
 						player.setPositionData();
+
+						for (unsigned i = 0; i < enemies.size(); i++) {
+							enemies[i].Move(player.position);
+						}
 					}
 					else {
 						player.placeKey(DIRECTION_LEFT);
-						player.attack(DIRECTION_LEFT);
-						continue;
-					}
-					
-					for (unsigned i = 0; i < enemies.size(); i++) {
-						enemies[i].Move(player.position);
+						if (!player.attack(DIRECTION_LEFT)) {
+							for (unsigned i = 0; i < enemies.size(); i++) {
+								enemies[i].Move(player.position);
+							}
+						}
 					}
 					currentMovementDelay = MOVEMENT_DELAY;
 				}
@@ -991,15 +1025,18 @@ int main(int argc, char *argv[])
 						player.clearPositionData();
 						player.position.x += MAP_TILE_SIZE;
 						player.setPositionData();
+
+						for (unsigned i = 0; i < enemies.size(); i++) {
+							enemies[i].Move(player.position);
+						}
 					}
 					else {
 						player.placeKey(DIRECTION_RIGHT);
-						player.attack(DIRECTION_RIGHT);
-						continue;
-					}
-
-					for (unsigned i = 0; i < enemies.size(); i++) {
-						enemies[i].Move(player.position);
+						if (!player.attack(DIRECTION_RIGHT)) {
+							for (unsigned i = 0; i < enemies.size(); i++) {
+								enemies[i].Move(player.position);
+							}
+						}
 					}
 					currentMovementDelay = MOVEMENT_DELAY;
 				}
@@ -1008,15 +1045,18 @@ int main(int argc, char *argv[])
 						player.clearPositionData();
 						player.position.y -= MAP_TILE_SIZE;
 						player.setPositionData();
+
+						for (unsigned i = 0; i < enemies.size(); i++) {
+							enemies[i].Move(player.position);
+						}
 					}
 					else {
 						player.placeKey(DIRECTION_DOWN);
-						player.attack(DIRECTION_DOWN);
-						continue;
-					}
-
-					for (unsigned i = 0; i < enemies.size(); i++) {
-						enemies[i].Move(player.position);
+						if (!player.attack(DIRECTION_DOWN)) {
+							for (unsigned i = 0; i < enemies.size(); i++) {
+								enemies[i].Move(player.position);
+							}
+						}
 					}
 					currentMovementDelay = MOVEMENT_DELAY;
 				}
@@ -1025,15 +1065,18 @@ int main(int argc, char *argv[])
 						player.clearPositionData();
 						player.position.y += MAP_TILE_SIZE;
 						player.setPositionData();
+
+						for (unsigned i = 0; i < enemies.size(); i++) {
+							enemies[i].Move(player.position);
+						}
 					}
 					else {
 						player.placeKey(DIRECTION_UP);
-						player.attack(DIRECTION_UP);
-						continue;
-					}
-
-					for (unsigned i = 0; i < enemies.size(); i++) {
-						enemies[i].Move(player.position);
+						if (!player.attack(DIRECTION_UP)) {
+							for (unsigned i = 0; i < enemies.size(); i++) {
+								enemies[i].Move(player.position);
+							}
+						}
 					}
 					currentMovementDelay = MOVEMENT_DELAY;
 				}
@@ -1156,6 +1199,7 @@ int main(int argc, char *argv[])
 				}
 				if (enemy.collided(player)) {
 					state = STATE_GAMEOVER;
+					fadeout = 0.0f;
 					gameOverMessage = "You Died";
 				}
 				program.SetModelMatrix(modelMatrix);
@@ -1207,23 +1251,107 @@ int main(int argc, char *argv[])
 			break;
 
 		case STATE_GAMEOVER:
-			program.SetViewMatrix(glm::mat4(1.0f));
+			glClearColor(0.1412f, 0.0745f, 0.1020f, 1.0f);
+			renderMap();
+
+			// center camera on the player
+			viewMatrix = glm::mat4(1.0f);
+			viewMatrix = glm::scale(viewMatrix, glm::vec3(2.0f, 2.0f, 1.0f));
+			viewMatrix = glm::translate(viewMatrix, -player.position);
+			program.SetViewMatrix(viewMatrix);
+
+			// draw static entities
+			for (Entity& torch : torches) {
+				modelMatrix = glm::mat4(1.0f);
+				modelMatrix = glm::translate(modelMatrix, torch.position);
+				if (!torch.faceRight) {
+					modelMatrix = glm::scale(modelMatrix, glm::vec3(-1.0f, 1.0f, 1.0f));
+				}
+				program.SetModelMatrix(modelMatrix);
+				torch.Draw(program);
+			}
+
+			for (unsigned i = 0; i < keysVector.size(); i++) {
+				modelMatrix = glm::mat4(1.0f);
+				modelMatrix = glm::translate(modelMatrix, keysVector[i].position);
+				program.SetModelMatrix(modelMatrix);
+				keysVector[i].Draw(program);
+			}
+
+			for (Entity& door : doors) {
+				modelMatrix = glm::mat4(1.0f);
+				modelMatrix = glm::translate(modelMatrix, door.position);
+				if (!door.faceRight) {
+					modelMatrix = glm::scale(modelMatrix, glm::vec3(-1.0f, 1.0f, 1.0f));
+				}
+				program.SetModelMatrix(modelMatrix);
+				door.Draw(program);
+			}
+
+			// draw exit
+			modelMatrix = glm::mat4(1.0f);
+			modelMatrix = glm::translate(modelMatrix, exitLadder.position);
+			program.SetModelMatrix(modelMatrix);
+			exitLadder.Draw(program);
+
+			// draw player
+			modelMatrix = glm::mat4(1.0f);
+			modelMatrix = glm::translate(modelMatrix, player.position);
+			if (!player.faceRight) {
+				modelMatrix = glm::scale(modelMatrix, glm::vec3(-1.0f, 1.0f, 1.0f));
+			}
+			program.SetModelMatrix(modelMatrix);
+			player.Draw(program);
+
+			// draw enemies
+			for (Entity& enemy : enemies) {
+				modelMatrix = glm::mat4(1.0f);
+				modelMatrix = glm::translate(modelMatrix, enemy.position);
+				if (!enemy.faceRight) {
+					modelMatrix = glm::scale(modelMatrix, glm::vec3(-1.0f, 1.0f, 1.0f));
+				}
+				program.SetModelMatrix(modelMatrix);
+				enemy.Draw(program);
+			}
+
+			float fadeOutVertices[] = { -1.777f, 1.0f, -1.777f, -1.0f, 1.777f, -1.0f, 
+				-1.777f, 1.0f, 1.777f, -1.0f, 1.777f, 1.0f};
+
+			if (fadeout < FADEOUT_TIME) {
+				fadeout += elapsed;
+			}
+			fadeout = (fadeout < FADEOUT_TIME ? fadeout : FADEOUT_TIME);
+
+			glUseProgram(untexturedProgram.programID);
+			untexturedProgram.SetModelMatrix(glm::translate(glm::mat4(1.0f), player.position));
+			untexturedProgram.SetProjectionMatrix(projectionMatrix);
+			untexturedProgram.SetViewMatrix(viewMatrix);
+			untexturedProgram.SetColor(0.0f, 0.0f, 0.0f, fadeout / FADEOUT_TIME);
+			glVertexAttribPointer(untexturedProgram.positionAttribute, 2, GL_FLOAT, false, 0, fadeOutVertices);
+			glEnableVertexAttribArray(untexturedProgram.positionAttribute);
+			glDrawArrays(GL_TRIANGLES, 0, 6);
+			glDisableVertexAttribArray(untexturedProgram.positionAttribute);
+
+			glUseProgram(program.programID);
 
 			modelMatrix = glm::mat4(1.0f);
-			modelMatrix = glm::translate(modelMatrix, glm::vec3(-1.7f, 0.8f, 0.0f));
+			modelMatrix = glm::translate(modelMatrix, player.position);
+			modelMatrix = glm::translate(modelMatrix, glm::vec3(-0.4f, 0.2f, 0.0f));
 			program.SetModelMatrix(modelMatrix);
-			DrawText(program, font, "GAME OVER", 0.4f, 0);
+			DrawText(program, font, "GAME OVER", 0.1f, 0);
 
 			modelMatrix = glm::mat4(1.0f);
-			float fontXPos = -((gameOverMessage.size() - 1) * 0.3f) / 2;
-			modelMatrix = glm::translate(modelMatrix, glm::vec3(fontXPos, 0.3f, 0.0f));
+			float fontXPos = -((gameOverMessage.size() - 1) * 0.05f) / 2;
+			modelMatrix = glm::translate(modelMatrix, player.position);
+			modelMatrix = glm::translate(modelMatrix, glm::vec3(fontXPos, 0.0f, 0.0f));
 			program.SetModelMatrix(modelMatrix);
-			DrawText(program, font, gameOverMessage, 0.3f, 0);
+			DrawText(program, font, gameOverMessage, 0.05f, 0);
 
 			modelMatrix = glm::mat4(1.0f);
-			modelMatrix = glm::translate(modelMatrix, glm::vec3(-3.4f, -0.2f, 0.0f));
+			modelMatrix = glm::translate(modelMatrix, player.position);
+			modelMatrix = glm::translate(modelMatrix, glm::vec3(-0.675f, -0.2f, 0.0f));
 			program.SetModelMatrix(modelMatrix);
-			DrawText(program, font, "Press ESC to Return to Title Screen", 0.2f, 0);
+			DrawText(program, font, "ESC : Return to Title Screen", 0.05f, 0);
 		}
 
 
