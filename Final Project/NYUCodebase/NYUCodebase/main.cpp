@@ -37,13 +37,17 @@ using namespace std;
 float accumulator = 0.0f;
 
 #define MAP_TILE_SIZE 0.1f
-#define LEVEL_WIDTH 20
-#define LEVEL_HEIGHT 10
+#define LEVEL_1_WIDTH 20
+#define LEVEL_1_HEIGHT 10
+#define LEVEL_2_WIDTH 40
+#define LEVEL_2_HEIGHT 21
+#define LEVEL_3_WIDTH 30
+#define LEVEL_3_HEIGHT 30
 #define MAP_SPRITE_COUNT_X 10
 #define MAP_SPRITE_COUNT_Y 10
 
 #define MOVEMENT_DELAY 0.2f
-#define FADEOUT_TIME 5.0f
+#define FADEOUT_TIME 3.0f
 
 enum GameState { STATE_TITLE, STATE_GAME, STATE_GAMEOVER, STATE_NEXT_LEVEL };
 enum EntityType { ENTITY_NONE, ENTITY_PLAYER, ENTITY_SKULL, ENTITY_TORCH, ENTITY_SIDE_TORCH, ENTITY_DOOR, ENTITY_KEY, ENTITY_EXIT, ENTITY_SWORD };
@@ -647,8 +651,18 @@ bool Entity::attack(Direction d) {
 vector<float> vertexData;
 vector<float> texCoordData;
 void drawMap() {
-	for (int y = 0; y < LEVEL_HEIGHT; y++) {
-		for (int x = 0; x < LEVEL_WIDTH; x++) {
+	int levelHeight = LEVEL_1_HEIGHT;
+	int levelWidth = LEVEL_1_WIDTH;
+	if (currentLevel == 2) {
+		levelHeight = LEVEL_2_HEIGHT;
+		levelWidth = LEVEL_2_WIDTH;
+	}
+	else if (currentLevel == 3) {
+		levelHeight = LEVEL_3_HEIGHT;
+		levelWidth = LEVEL_3_WIDTH;
+	}
+	for (int y = 0; y < levelHeight; y++) {
+		for (int x = 0; x < levelWidth; x++) {
 			if (levelData[y][x] != 0) {
 				float u = (float)(((int)levelData[y][x]) % MAP_SPRITE_COUNT_X) / (float)MAP_SPRITE_COUNT_X;
 				float v = (float)(((int)levelData[y][x]) / MAP_SPRITE_COUNT_X) / (float)MAP_SPRITE_COUNT_Y;
@@ -784,7 +798,7 @@ void placeEntity(const string& type, float x, float y) {
 	}
 	else if (type == "Door") {
 		doors.push_back(Entity(glm::vec3(x, y, 1), glm::vec3(MAP_TILE_SIZE, MAP_TILE_SIZE, 1), true, ENTITY_DOOR, true));
-		doors[doors.size() - 1].sprite = SheetSprite(mapSpriteSheet, 0.7f, 0.4f, 0.1f, 0.1f, 0.10f);
+		doors[doors.size() - 1].sprite = SheetSprite(mapSpriteSheet, 0.6f, 0.4f, 0.1f, 0.1f, 0.10f);
 	}
 	else if (type == "Exit") {
 		exitLadder = Entity(glm::vec3(x, y, 1), glm::vec3(MAP_TILE_SIZE, MAP_TILE_SIZE, 1), true, ENTITY_EXIT, true);
@@ -916,7 +930,13 @@ int main(int argc, char *argv[])
 					keysVector.clear();
 					doors.clear();
 					swords.clear();
+					keyCount = 0;
 
+					// clear out vertex and texcoord data
+					vertexData.clear();
+					texCoordData.clear();
+
+					currentLevel = 1;
 					setupScene("level1.txt");
 
 					// center camera on the player
@@ -929,9 +949,25 @@ int main(int argc, char *argv[])
 				}
 			}
 			else if (state == STATE_NEXT_LEVEL) {
-				currentLevel++;
 				if (keys[SDL_SCANCODE_SPACE]) {
-					setupScene("level1.txt");
+					// clear out the vectors
+					enemies.clear();
+					torches.clear();
+					keysVector.clear();
+					doors.clear();
+					swords.clear();
+
+					// clear out vertex and texcoord data
+					vertexData.clear();
+					texCoordData.clear();
+
+					currentLevel++;
+					if (currentLevel == 2) {
+						setupScene("level2.txt");
+					}
+					else if (currentLevel == 3) {
+						setupScene("level3.txt");
+					}
 
 					// center camera on the player
 					viewMatrix = glm::mat4(1.0f);
@@ -982,7 +1018,12 @@ int main(int argc, char *argv[])
 			program.SetViewMatrix(glm::mat4(1.0f));
 
 			modelMatrix = glm::mat4(1.0f);
-			modelMatrix = glm::translate(modelMatrix, glm::vec3(-0.75f, 0.1f, 0.0f));
+			modelMatrix = glm::translate(modelMatrix, glm::vec3(-1.5f, 0.2f, 0.0f));
+			program.SetModelMatrix(modelMatrix);
+			DrawText(program, font, "Level " + to_string(currentLevel) + " Complete", 0.2f, 0);
+
+			modelMatrix = glm::mat4(1.0f);
+			modelMatrix = glm::translate(modelMatrix, glm::vec3(-0.75f, -0.1f, 0.0f));
 			program.SetModelMatrix(modelMatrix);
 			DrawText(program, font, "Space : Continue", 0.1f, 0);
 
@@ -1245,7 +1286,14 @@ int main(int argc, char *argv[])
 			DrawText(program, font, "Q:Quit", 0.05f, 0);
 
 			if (player.collided(exitLadder)) {
-				state = STATE_NEXT_LEVEL;
+				if (currentLevel == 3) {
+					state = STATE_GAMEOVER;
+					fadeout = 0.0f;
+					gameOverMessage = "That's all the Levels";
+				}
+				else {
+					state = STATE_NEXT_LEVEL;
+				}
 			}
 
 			break;
@@ -1336,14 +1384,14 @@ int main(int argc, char *argv[])
 
 			modelMatrix = glm::mat4(1.0f);
 			modelMatrix = glm::translate(modelMatrix, player.position);
-			modelMatrix = glm::translate(modelMatrix, glm::vec3(-0.4f, 0.2f, 0.0f));
+			modelMatrix = glm::translate(modelMatrix, glm::vec3(-0.4f, 0.1f, 0.0f));
 			program.SetModelMatrix(modelMatrix);
 			DrawText(program, font, "GAME OVER", 0.1f, 0);
 
 			modelMatrix = glm::mat4(1.0f);
 			float fontXPos = -((gameOverMessage.size() - 1) * 0.05f) / 2;
 			modelMatrix = glm::translate(modelMatrix, player.position);
-			modelMatrix = glm::translate(modelMatrix, glm::vec3(fontXPos, 0.0f, 0.0f));
+			modelMatrix = glm::translate(modelMatrix, glm::vec3(fontXPos, -0.1f, 0.0f));
 			program.SetModelMatrix(modelMatrix);
 			DrawText(program, font, gameOverMessage, 0.05f, 0);
 
