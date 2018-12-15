@@ -4,6 +4,7 @@
 #include <SDL.h>
 #include <SDL_opengl.h>
 #include <SDL_image.h>
+#include <SDL_mixer.h>
 
 #ifdef _WINDOWS
 #define RESOURCE_FOLDER ""
@@ -67,6 +68,13 @@ float animationElapsed = 0.0f;
 float framesPerSecond = 10.0f;
 int currentIndex = 0;
 float fadeout = 0.0f;
+
+// for sound
+Mix_Chunk *hit_wall;
+Mix_Chunk *swordSound;
+Mix_Chunk *keySound;
+Mix_Chunk *doorSound;
+Mix_Music *bgm;
 
 int mapWidth;
 int mapHeight;
@@ -877,6 +885,7 @@ int main(int argc, char *argv[])
 	glewInit();
 #endif
 
+	// textures
 	font = LoadTexture(RESOURCE_FOLDER"font1.png");
 	playerSpriteSheet = LoadTexture(RESOURCE_FOLDER"priest2_framesheet.png");
 	skullSpriteSheet = LoadTexture(RESOURCE_FOLDER"skull_framesheet.png");
@@ -885,6 +894,16 @@ int main(int argc, char *argv[])
 	keySpriteSheet = LoadTexture(RESOURCE_FOLDER"key_framesheet.png");
 	mapSpriteSheet = LoadTexture(RESOURCE_FOLDER"Dungeon_Tileset.png");
 	swordSprite = LoadTexture(RESOURCE_FOLDER"sword.png");
+
+	// sounds
+	Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 4096);
+	hit_wall = Mix_LoadWAV(RESOURCE_FOLDER"hit_wall.wav");
+	keySound = Mix_LoadWAV(RESOURCE_FOLDER"key.wav");
+	doorSound = Mix_LoadWAV(RESOURCE_FOLDER"door.wav");
+	swordSound = Mix_LoadWAV(RESOURCE_FOLDER"sword.wav");
+	bgm = Mix_LoadMUS(RESOURCE_FOLDER"TRG_Banks_Christmas_Town.mp3");
+	Mix_VolumeMusic(20);
+	Mix_PlayMusic(bgm, -1);
 
 	state = STATE_TITLE;
 
@@ -1053,9 +1072,13 @@ int main(int argc, char *argv[])
 					else {
 						player.placeKey(DIRECTION_LEFT);
 						if (!player.attack(DIRECTION_LEFT)) {
+							Mix_PlayChannel(-1, hit_wall, 0);
 							for (unsigned i = 0; i < enemies.size(); i++) {
 								enemies[i].Move(player.position);
 							}
+						}
+						else {
+							Mix_PlayChannel(-1, swordSound, 0);
 						}
 					}
 					currentMovementDelay = MOVEMENT_DELAY;
@@ -1074,9 +1097,13 @@ int main(int argc, char *argv[])
 					else {
 						player.placeKey(DIRECTION_RIGHT);
 						if (!player.attack(DIRECTION_RIGHT)) {
+							Mix_PlayChannel(-1, hit_wall, 0);
 							for (unsigned i = 0; i < enemies.size(); i++) {
 								enemies[i].Move(player.position);
 							}
+						}
+						else {
+							Mix_PlayChannel(-1, swordSound, 0);
 						}
 					}
 					currentMovementDelay = MOVEMENT_DELAY;
@@ -1094,9 +1121,13 @@ int main(int argc, char *argv[])
 					else {
 						player.placeKey(DIRECTION_DOWN);
 						if (!player.attack(DIRECTION_DOWN)) {
+							Mix_PlayChannel(-1, hit_wall, 0);
 							for (unsigned i = 0; i < enemies.size(); i++) {
 								enemies[i].Move(player.position);
 							}
+						}
+						else {
+							Mix_PlayChannel(-1, swordSound, 0);
 						}
 					}
 					currentMovementDelay = MOVEMENT_DELAY;
@@ -1114,9 +1145,13 @@ int main(int argc, char *argv[])
 					else {
 						player.placeKey(DIRECTION_UP);
 						if (!player.attack(DIRECTION_UP)) {
+							Mix_PlayChannel(-1, hit_wall, 0);
 							for (unsigned i = 0; i < enemies.size(); i++) {
 								enemies[i].Move(player.position);
 							}
+						}
+						else {
+							Mix_PlayChannel(-1, swordSound, 0);
 						}
 					}
 					currentMovementDelay = MOVEMENT_DELAY;
@@ -1189,6 +1224,7 @@ int main(int argc, char *argv[])
 				keysVector[i].Draw(program);
 
 				if (keysVector[i].collided(player)) {
+					Mix_PlayChannel(-1, keySound, 0);
 					keysVector.erase(keysVector.begin() + i);
 					keyCount++;
 					i--;
@@ -1196,6 +1232,7 @@ int main(int argc, char *argv[])
 				else {
 					for (unsigned j = 0; j < doors.size(); j++) {
 						if (keysVector[i].collided(doors[j])) {
+							Mix_PlayChannel(-1, doorSound, 0);
 							keysVector.erase(keysVector.begin() + i);
 							doors[j].clearPositionData();
 							doors.erase(doors.begin() + j);
@@ -1405,6 +1442,13 @@ int main(int argc, char *argv[])
 
 		SDL_GL_SwapWindow(displayWindow);
 	}
+
+	Mix_HaltMusic();
+	Mix_FreeChunk(hit_wall);
+	Mix_FreeChunk(keySound);
+	Mix_FreeChunk(doorSound);
+	Mix_FreeChunk(swordSound);
+	Mix_FreeMusic(bgm);
 
 	SDL_Quit();
 	return 0;

@@ -33,9 +33,6 @@
     <None Include="fragment_textured.glsl" />
   </ItemGroup>
   <ItemGroup>
-    <Image Include="bombas.png">
-      <Filter>Resource Files</Filter>
-    </Image>
     <Image Include="Dungeon_Tileset.png">
       <Filter>Resource Files</Filter>
     </Image>
@@ -48,5 +45,45 @@
     <Image Include="skull_framesheet.png">
       <Filter>Resource Files</Filter>
     </Image>
+    <Image Include="key_framesheet.png">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="side_torch_framesheet.png">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="sword.png">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="torch_framesheet.png">
+      <Filter>Resource Files</Filter>
+    </Image>
+  </ItemGroup>
+  <ItemGroup>
+    <Media Include="door.wav">
+      <Filter>Resource Files</Filter>
+    </Media>
+    <Media Include="hit_wall.wav">
+      <Filter>Resource Files</Filter>
+    </Media>
+    <Media Include="key.wav">
+      <Filter>Resource Files</Filter>
+    </Media>
+    <Media Include="sword.wav">
+      <Filter>Resource Files</Filter>
+    </Media>
+    <Media Include="TRG_Banks_Christmas_Town.mp3">
+      <Filter>Resource Files</Filter>
+    </Media>
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="level1.txt">
+      <Filter>Resource Files</Filter>
+    </Text>
+    <Text Include="level2.txt">
+      <Filter>Resource Files</Filter>
+    </Text>
+    <Text Include="level3.txt">
+      <Filter>Resource Files</Filter>
+    </Text>
   </ItemGroup>
 </Project>

@@ -87,11 +87,26 @@
     <None Include="vertex.glsl" />
   </ItemGroup>
   <ItemGroup>
-    <Image Include="bombas.png" />
     <Image Include="Dungeon_Tileset.png" />
     <Image Include="font1.png" />
+    <Image Include="key_framesheet.png" />
     <Image Include="priest2_framesheet.png" />
+    <Image Include="side_torch_framesheet.png" />
     <Image Include="skull_framesheet.png" />
+    <Image Include="sword.png" />
+    <Image Include="torch_framesheet.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <Media Include="door.wav" />
+    <Media Include="hit_wall.wav" />
+    <Media Include="key.wav" />
+    <Media Include="sword.wav" />
+    <Media Include="TRG_Banks_Christmas_Town.mp3" />
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="level1.txt" />
+    <Text Include="level2.txt" />
+    <Text Include="level3.txt" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
